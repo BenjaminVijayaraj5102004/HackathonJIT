@@ -2,15 +2,14 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
+import math
 import random
+import statistics
 from typing import Any
 
-import numpy as np
-import pandas as pd
 import requests
 from flask import Flask, jsonify
 from flask_cors import CORS
-from sklearn.linear_model import LinearRegression
 
 
 app = Flask(__name__)
@@ -44,13 +43,13 @@ def _ensure_seeded() -> None:
 
 
 def _z_score(quantity: int, history: deque[int]) -> float:
-    values = np.array(history, dtype=float)
-    if values.size < 5:
+    values = [float(v) for v in history]
+    if len(values) < 5:
         return 0.0
-    std = float(np.std(values))
+    std = statistics.pstdev(values)
     if std == 0:
         return 0.0
-    mean = float(np.mean(values))
+    mean = statistics.mean(values)
     return (quantity - mean) / std
 
 
@@ -113,31 +112,45 @@ def _weather_signal() -> dict[str, Any]:
     }
 
 
-def _build_sales_history() -> pd.DataFrame:
-    days = pd.date_range(end=datetime.utcnow().date(), periods=HISTORICAL_DAYS)
-    trend = np.linspace(160, 245, HISTORICAL_DAYS)
-    seasonality = 10 * np.sin(np.linspace(0, 4.2, HISTORICAL_DAYS))
-    noise = np.random.normal(0, 7, HISTORICAL_DAYS)
-    demand = np.clip(trend + seasonality + noise, 90, None).round(0)
+def _build_sales_history() -> list[dict[str, int | str]]:
+    start = datetime.utcnow().date() - timedelta(days=HISTORICAL_DAYS - 1)
+    history: list[dict[str, int | str]] = []
+    for idx in range(HISTORICAL_DAYS):
+        day = start + timedelta(days=idx)
+        trend = 160 + (85 * idx / max(1, HISTORICAL_DAYS - 1))
+        seasonality = 10 * math.sin((idx / max(1, HISTORICAL_DAYS - 1)) * 4.2)
+        noise = random.uniform(-8, 8)
+        demand = max(90, round(trend + seasonality + noise))
+        history.append({"day": day.strftime("%m-%d"), "idx": idx, "demand": int(demand)})
+    return history
 
-    return pd.DataFrame(
-        {"day": [d.strftime("%m-%d") for d in days], "idx": np.arange(HISTORICAL_DAYS), "demand": demand}
-    )
+
+def _linear_regression_predict(xs: list[int], ys: list[int], future_xs: list[int]) -> list[float]:
+    n = len(xs)
+    if n == 0:
+        return [120.0 for _ in future_xs]
+    x_mean = sum(xs) / n
+    y_mean = sum(ys) / n
+
+    numerator = sum((x - x_mean) * (y - y_mean) for x, y in zip(xs, ys))
+    denominator = sum((x - x_mean) ** 2 for x in xs)
+    slope = numerator / denominator if denominator else 0.0
+    intercept = y_mean - slope * x_mean
+    return [slope * x + intercept for x in future_xs]
 
 
 def _forecast_demand(weather_factor: float) -> dict[str, list[dict[str, Any]]]:
-    df = _build_sales_history()
-    model = LinearRegression()
-    model.fit(df[["idx"]], df["demand"])
-
-    future_idx = np.arange(HISTORICAL_DAYS, HISTORICAL_DAYS + 7).reshape(-1, 1)
-    raw_forecast = model.predict(future_idx)
-    adjusted = np.clip(raw_forecast * weather_factor, 50, None).round(0)
+    history = _build_sales_history()
+    xs = [int(item["idx"]) for item in history]
+    ys = [int(item["demand"]) for item in history]
+    future_idx = list(range(HISTORICAL_DAYS, HISTORICAL_DAYS + 7))
+    raw_forecast = _linear_regression_predict(xs, ys, future_idx)
+    adjusted = [max(50, round(v * weather_factor)) for v in raw_forecast]
 
     start = datetime.utcnow().date() + timedelta(days=1)
     forecast_dates = [(start + timedelta(days=i)).strftime("%m-%d") for i in range(7)]
 
-    historical = [{"day": row["day"], "demand": int(row["demand"])} for _, row in df.tail(14).iterrows()]
+    historical = [{"day": item["day"], "demand": int(item["demand"])} for item in history[-14:]]
     predicted = [{"day": d, "demand": int(v)} for d, v in zip(forecast_dates, adjusted)]
     return {"historical": historical, "forecast": predicted}
 
