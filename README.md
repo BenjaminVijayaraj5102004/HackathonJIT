@@ -61,6 +61,17 @@ cmd /c npm run dev
 
 Frontend runs on `http://localhost:5173` and proxies `/api` to Flask.
 
+## Run As Full Web App (Single URL)
+
+This serves both UI and API from Flask on one URL:
+
+```powershell
+cd C:\Users\benju\Desktop\SCM_tool
+powershell -ExecutionPolicy Bypass -File .\scripts\run_webapp.ps1
+```
+
+Then open `http://localhost:5000`.
+
 ## Demo Note
 
 The dashboard title is set to **Retail Fusion** in both frontend and backend responses.

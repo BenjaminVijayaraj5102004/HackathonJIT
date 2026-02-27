@@ -2,18 +2,21 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
+from pathlib import Path
 import random
 from typing import Any
 
 import numpy as np
 import pandas as pd
 import requests
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 from sklearn.linear_model import LinearRegression
 
 
-app = Flask(__name__)
+FRONTEND_DIST = Path(__file__).resolve().parents[1] / "frontend" / "dist"
+
+app = Flask(__name__, static_folder=str(FRONTEND_DIST), static_url_path="/")
 CORS(app)
 
 PROJECT_TITLE = "Retail Fusion"
@@ -213,6 +216,23 @@ def dashboard() -> Any:
     return jsonify(payload)
 
 
+@app.get("/")
+def serve_root() -> Any:
+    if (FRONTEND_DIST / "index.html").exists():
+        return send_from_directory(FRONTEND_DIST, "index.html")
+    return jsonify({"message": "Frontend build not found. Run: npm run build --prefix frontend"}), 503
+
+
+@app.get("/<path:path>")
+def serve_frontend(path: str) -> Any:
+    target = FRONTEND_DIST / path
+    if target.exists() and target.is_file():
+        return send_from_directory(FRONTEND_DIST, path)
+    if (FRONTEND_DIST / "index.html").exists():
+        return send_from_directory(FRONTEND_DIST, "index.html")
+    return jsonify({"message": "Frontend build not found. Run: npm run build --prefix frontend"}), 503
+
+
 if __name__ == "__main__":
     _seed_qty_history()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
