@@ -64,3 +64,12 @@ Frontend runs on `http://localhost:5173` and proxies `/api` to Flask.
 ## Demo Note
 
 The dashboard title is set to **Retail Fusion** in both frontend and backend responses.
+
+## One-Command Validation
+
+Run end-to-end local validation before review:
+
+```powershell
+cd C:\Users\benju\Desktop\SCM_tool
+powershell -ExecutionPolicy Bypass -File .\scripts\e2e_check.ps1
+```
